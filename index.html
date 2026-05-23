@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculateur de Pertes ESC</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>⚡ ESC Loss Calculator</h1>
+        <p>Outil d'analyse des pertes pour MOSFETs de puissance</p>
+    </header>
+
+    <div class="container">
+        <aside class="library-sidebar">
+            <h2>📚 Bibliothèque</h2>
+            <div class="upload-zone">
+                <input type="file" id="pdf-upload" accept="application/pdf" multiple>
+                <label for="pdf-upload" class="btn">Ajouter Datasheet (PDF)</label>
+            </div>
+            <div id="upload-confirmation" class="confirmation-msg"></div>
+            <div class="library-table-container">
+                <table class="library-table">
+                    <thead><tr><th>Fichier</th><th>Action</th></tr></thead>
+                    <tbody id="pdf-list-body">
+                        <tr><td colspan="2" style="text-align:center; color:#94a3b8;">Aucun PDF chargé</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="dashboard-layout">
+                
+                <div class="inputs-column">
+                    <div class="table-controls">
+                        <h2>📊 1. Paramètres (Datasheet)</h2>
+                        <button id="btn-simulate-extract" class="btn btn-secondary" disabled>Extraction IA Groq</button>
+                    </div>
+                    <div class="table-container">
+                        <table id="mosfet-table">
+                            <thead><tr><th>Symbole</th><th>Description</th><th>Valeur</th><th>Unité</th></tr></thead>
+                            <tbody id="table-body">
+                                </tbody>
+                        </table>
+                    </div>
+
+                    <h2 style="margin-top: 10px;">⚙️ 2. Paramètres Système & Driver</h2>
+                    <div class="table-container">
+                        <table id="system-table">
+                            <thead><tr><th>Symbole</th><th>Description</th><th>Valeur</th><th>Unité</th></tr></thead>
+                            <tbody>
+                                <tr><td><strong>f_sw</strong></td><td>Fréquence de découpage</td><td><input type="number" id="sys-fsw" value="24"></td><td>kHz</td></tr>
+                                <tr><td><strong>V_bus</strong></td><td>Tension de la batterie (Bus)</td><td><input type="number" id="sys-vbus" value="24"></td><td>V</td></tr>
+                                <tr><td><strong>I_rms</strong></td><td>Courant efficace (Moteur)</td><td><input type="number" id="sys-irms" value="50"></td><td>A</td></tr>
+                                <tr><td><strong>D</strong></td><td>Rapport cyclique (PWM)</td><td><input type="number" id="sys-d" step="0.1" value="0.5"></td><td>0-1</td></tr>
+                                <tr><td><strong>V_driver</strong></td><td>Tension haute du Driver</td><td><input type="number" id="sys-vdriver" value="10"></td><td>V</td></tr>
+                                <tr><td><strong>V_low</strong></td><td>Tension basse du Driver</td><td><input type="number" id="sys-vlow" value="0"></td><td>V</td></tr>
+                                <tr><td><strong>R_gate_total</strong></td><td>Résistance grille (int+ext)</td><td><input type="number" id="sys-rgate" step="0.1" value="4.7"></td><td>Ω</td></tr>
+                                <tr><td><strong>V_plateau</strong></td><td>Tension plateau Miller</td><td><input type="number" id="sys-vplateau" step="0.1" value="4.5"></td><td>V</td></tr>
+                                <tr><td><strong>Q_gs2</strong></td><td>Charge post-seuil</td><td><input type="number" id="sys-qgs2" step="0.1" value="10.5"></td><td>nC</td></tr>
+                                <tr><td><strong>t_dt_on</strong></td><td>Temps mort (allumage)</td><td><input type="number" id="sys-tdton" value="50"></td><td>ns</td></tr>
+                                <tr><td><strong>t_dt_off</strong></td><td>Temps mort (extinction)</td><td><input type="number" id="sys-tdtoff" value="50"></td><td>ns</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="results-column">
+                    <div class="calculation-zone">
+                        <h2>🧮 3. Résultats & Pertes</h2>
+                        <button id="btn-calculate" class="btn btn-primary">Calculer les pertes</button>
+                        <div id="results-output" class="results" style="display: none;">
+                            <table class="library-table">
+                                <thead><tr><th>Type de Perte</th><th>Formule appliquée</th><th>Résultat</th></tr></thead>
+                                <tbody id="results-body">
+                                    </tbody>
+                            </table>
+                            <h3 id="total-loss" style="margin-top: 15px; color: var(--primary);"></h3>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
