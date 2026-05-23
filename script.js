@@ -23,7 +23,7 @@ const mosfetParameters = [
 ];
 
 // État de l'application
-const GROQ_API_KEY = "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"; // ⚠️ Remplace par ta clé gsk_...
+const GROQ_API_KEY = ; // ⚠️ Remplace par ta clé gsk_...
 let library = [];
 let currentSelectedFile = null;
 let db;
