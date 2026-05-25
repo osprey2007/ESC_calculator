@@ -23,7 +23,7 @@ const mosfetParameters = [
 ];
 
 // État de l'application
-const GROQ_API_KEY = ""; // ⚠️ Remplace par ta clé gsk_...
+const GROQ_API_KEY = ""; // ⚠️ Remplace par ta clé gsk_... si nécessaire
 let library = [];
 let currentSelectedFile = null;
 let db;
@@ -60,7 +60,8 @@ function loadLibraryFromDB(selectLast = false) {
         
         if (selectLast && library.length > 0) {
             currentSelectedFile = library.length - 1;
-            document.getElementById("btn-simulate-extract").disabled = false;
+            document.getElementById("btn-extract-A").disabled = false;
+            document.getElementById("btn-extract-B").disabled = false;
             initTable();
         }
         renderLibrary();
@@ -76,7 +77,8 @@ function deleteFile(id, event) {
     
     transaction.oncomplete = function() {
         currentSelectedFile = null;
-        document.getElementById("btn-simulate-extract").disabled = true;
+        document.getElementById("btn-extract-A").disabled = true;
+        document.getElementById("btn-extract-B").disabled = true;
         initTable();
         loadLibraryFromDB();
     };
@@ -268,24 +270,31 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     });
 });
 
-// --- MOTEUR DE CALCUL COUPLÉ ---
+// --- MOTEUR DE CALCUL INTERCEPTANT L'ID TRANSISTOR ---
 function executeLossEngine(target, overrideId = null, overrideValue = null) {
     const getVal = (id) => {
+        // Si le Sweep force une valeur sur le paramètre courant, on l'applique aux deux calculs
         if (overrideId && overrideId === id) return overrideValue;
+        
         let finalId = id;
         if (id.startsWith("input-")) {
             finalId = id.replace("input-", `input-${target}-`);
+        } else if (id.startsWith("sys-")) {
+            finalId = id.replace("sys-", `sys-${target}-`);
         }
         return parseFloat(document.getElementById(finalId)?.value) || 0;
     };
 
+    // 1. Données Composant (Tableau 1)
     const rdson = getVal("input-rdson") * 1e-3; 
     const qg = getVal("input-qg") * 1e-9;
     const qgs = getVal("input-qgs") * 1e-9;
     const qgd = getVal("input-qgd") * 1e-9;
-    const qrr = getVal("input-qrr") * 1e-9;
     const coss = getVal("input-coss") * 1e-12;
+    const vsd = getVal("input-vsd");
+    const qrr = getVal("input-qrr") * 1e-9;
 
+    // 2. Données Système & Driver (Tableau 2 - Mappées sur -A- ou -B-)
     const fsw = getVal("sys-fsw") * 1e3; 
     const vbus = getVal("sys-vbus");
     const irms = getVal("sys-irms");
@@ -295,7 +304,11 @@ function executeLossEngine(target, overrideId = null, overrideValue = null) {
     const rgate = getVal("sys-rgate");
     const vplateau = getVal("sys-vplateau");
     const qgs2 = getVal("sys-qgs2") * 1e-9;
+    
+    const tdton = getVal("sys-tdton") * 1e-9;
+    const tdtoff = getVal("sys-tdtoff") * 1e-9;
 
+    // 3. Calculs intermédiaires
     const i_gate_on = (vdriver - vplateau) / rgate;
     const i_gate_off = (vplateau - vlow) / rgate;
 
@@ -304,14 +317,18 @@ function executeLossEngine(target, overrideId = null, overrideValue = null) {
     if (i_gate_off > 0) t_off = (qgd + qgs2) / i_gate_off;
 
     const i_sw = irms * Math.SQRT2; 
+    
+    // 4. Calcul de toutes les pertes directes
     const p_sw = 0.5 * vbus * i_sw * (t_on + t_off) * fsw;
     const p_cond = rdson * Math.pow(irms, 2) * d;
     const p_gate = qg * vdriver * fsw;
     const p_rr = qrr * vbus * fsw;
     const p_oss = 0.5 * coss * Math.pow(vbus, 2) * fsw;
-    const p_total = p_sw + p_cond + p_gate + p_rr + p_oss;
+    const p_dt = (tdton + tdtoff) * vsd * i_sw * fsw;
+    
+    const p_total = p_sw + p_cond + p_gate + p_rr + p_oss + p_dt;
 
-    return { t_on, t_off, p_sw, p_cond, p_gate, p_rr, p_oss, p_total };
+    return { t_on, t_off, p_sw, p_cond, p_gate, p_rr, p_oss, p_dt, p_total };
 }
 
 // --- AFFICHAGE COMPARATIF (PAGE 1) ---
@@ -338,6 +355,12 @@ document.getElementById("btn-calculate").addEventListener("click", function() {
             <td>$$P_{cond} = R_{DS(on)} I_{rms}^2 D$$</td>
             <td>${resA.p_cond.toFixed(3)} W</td>
             <td>${resB.p_cond.toFixed(3)} W</td>
+        </tr>
+        <tr>
+            <td><strong>P_dt</strong> (Temps mort)</td>
+            <td>$$P_{dt} = (t_{dt\\_on} + t_{dt\\_off}) \\times V_{SD} \\times I_{out} \\times f_{sw}$$</td>
+            <td>${resA.p_dt.toFixed(3)} W</td>
+            <td>${resB.p_dt.toFixed(3)} W</td>
         </tr>
         <tr>
             <td><strong>P_gate</strong> (Driver)</td>

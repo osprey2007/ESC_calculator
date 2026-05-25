@@ -79,26 +79,15 @@
                             <tbody id="table-body"></tbody>
                         </table>
 
-                        <table class="library-table">
-                            <thead>
-                                <tr>
-                                    <th>Type de Perte</th>
-                                    <th>Formule appliquée</th>
-                                    <th>MOSFET A</th>
-                                    <th>MOSFET B</th>
-                                </tr>
-                            </thead>
-                            <tbody id="results-body"></tbody>
-                        </table>
-
-                        <h2 style="margin-top: 10px;">⚙️ 2. Paramètres Système & Driver</h2>
+                        <h2 style="margin-top: 15px;">⚙️ 2. Paramètres Système & Driver</h2>
                         <div class="table-container">
                             <table id="system-table">
                                 <thead>
                                     <tr>
                                         <th>Symbole</th>
                                         <th>Description</th>
-                                        <th>Valeur</th>
+                                        <th style="color: #3b82f6;">MOSFET A</th>
+                                        <th style="color: #ef4444;">MOSFET B</th>
                                         <th>Unité</th>
                                     </tr>
                                 </thead>
@@ -106,67 +95,78 @@
                                     <tr>
                                         <td><strong>f_sw</strong></td>
                                         <td>Fréquence de découpage</td>
-                                        <td><input type="number" id="sys-fsw" value="24"></td>
+                                        <td><input type="number" id="sys-A-fsw" value="24"></td>
+                                        <td><input type="number" id="sys-B-fsw" value="24"></td>
                                         <td>kHz</td>
                                     </tr>
                                     <tr>
                                         <td><strong>V_bus</strong></td>
                                         <td>Tension de la batterie (Bus)</td>
-                                        <td><input type="number" id="sys-vbus" value="24"></td>
+                                        <td><input type="number" id="sys-A-vbus" value="24"></td>
+                                        <td><input type="number" id="sys-B-vbus" value="24"></td>
                                         <td>V</td>
                                     </tr>
                                     <tr>
                                         <td><strong>I_rms</strong></td>
                                         <td>Courant efficace (Moteur)</td>
-                                        <td><input type="number" id="sys-irms" value="50"></td>
+                                        <td><input type="number" id="sys-A-irms" value="50"></td>
+                                        <td><input type="number" id="sys-B-irms" value="50"></td>
                                         <td>A</td>
                                     </tr>
                                     <tr>
                                         <td><strong>D</strong></td>
                                         <td>Rapport cyclique (PWM)</td>
-                                        <td><input type="number" id="sys-d" step="0.1" value="0.5"></td>
+                                        <td><input type="number" id="sys-A-d" step="0.1" value="0.5"></td>
+                                        <td><input type="number" id="sys-B-d" step="0.1" value="0.5"></td>
                                         <td>0-1</td>
                                     </tr>
                                     <tr>
                                         <td><strong>V_driver</strong></td>
                                         <td>Tension haute du Driver</td>
-                                        <td><input type="number" id="sys-vdriver" value="10"></td>
+                                        <td><input type="number" id="sys-A-vdriver" value="10"></td>
+                                        <td><input type="number" id="sys-B-vdriver" value="10"></td>
                                         <td>V</td>
                                     </tr>
                                     <tr>
                                         <td><strong>V_low</strong></td>
                                         <td>Tension basse du Driver</td>
-                                        <td><input type="number" id="sys-vlow" value="0"></td>
+                                        <td><input type="number" id="sys-A-vlow" value="0"></td>
+                                        <td><input type="number" id="sys-B-vlow" value="0"></td>
                                         <td>V</td>
                                     </tr>
                                     <tr>
                                         <td><strong>R_gate_total</strong></td>
                                         <td>Résistance grille (int+ext)</td>
-                                        <td><input type="number" id="sys-rgate" step="0.1" value="4.7"></td>
+                                        <td><input type="number" id="sys-A-rgate" step="0.1" value="4.7"></td>
+                                        <td><input type="number" id="sys-B-rgate" step="0.1" value="4.7"></td>
                                         <td>Ω</td>
                                     </tr>
                                     <tr>
                                         <td><strong>V_plateau</strong></td>
                                         <td>Tension plateau Miller</td>
-                                        <td><input type="number" id="sys-vplateau" step="0.1" value="4.5"></td>
+                                        <td><input type="number" id="sys-A-vplateau" step="0.1" value="4.5"></td>
+                                        <td><input type="number" id="sys-B-vplateau" step="0.1" value="4.5"></td>
                                         <td>V</td>
                                     </tr>
                                     <tr>
                                         <td><strong>Q_gs2</strong></td>
                                         <td>Charge post-seuil</td>
-                                        <td><input type="number" id="sys-qgs2" step="0.1" value="10.5"></td>
+                                        <td><input type="number" id="sys-A-qgs2" step="0.1" value="10.5"></td>
+                                        <td><input type="number" id="sys-B-qgs2" step="0.1" value="10.5"></td>
                                         <td>nC</td>
                                     </tr>
                                     <tr>
                                         <td><strong>t_dt_on</strong></td>
                                         <td>Temps mort (allumage)</td>
-                                        <td><input type="number" id="sys-tdton" value="50"></td>
+                                        <td><input type="number" id="sys-A-tdton" value="50"></td>
+                                        <td><input type="number" id="sys-B-tdton" value="50"></td>
                                         <td>ns</td>
                                     </tr>
                                     <tr>
                                         <td><strong>t_dt_off</strong></td>
                                         <td>Temps mort (extinction)</td>
-                                        <td><input type="number" id="sys-tdtoff" value="50"></td>
+                                        <td><input type="number" id="sys-A-tdtoff" value="50"></td>
+                                        <td><input type="number" id="sys-B-tdtoff" value="50"></td>
                                         <td>ns</td>
                                     </tr>
                                 </tbody>
@@ -184,13 +184,14 @@
                                         <tr>
                                             <th>Type de Perte</th>
                                             <th>Formule appliquée</th>
-                                            <th>Résultat</th>
+                                            <th style="color: #3b82f6;">MOSFET A</th>
+                                            <th style="color: #ef4444;">MOSFET B</th>
                                         </tr>
                                     </thead>
                                     <tbody id="results-body">
                                     </tbody>
                                 </table>
-                                <h3 id="total-loss" style="margin-top: 15px; color: var(--primary);"></h3>
+                                <h3 id="total-loss" style="margin-top: 15px; line-height: 1.6;"></h3>
                             </div>
                         </div>
                     </div>
