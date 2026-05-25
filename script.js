@@ -188,17 +188,15 @@ async function extractTextFromPDF(file) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
         
-        // Reconstruction géométrique des lignes physiques du tableau
         let lines = {};
-        const yTolerance = 4; // Fusionne les éléments alignés à +/- 4 pixels près sur l'axe horizontal
+        const yTolerance = 4; 
         
         textContent.items.forEach(item => {
             if (!item.str.trim()) return;
             
-            const x = item.transform[4]; // Coordonnée X
-            const y = item.transform[5]; // Coordonnée Y
+            const x = item.transform[4]; 
+            const y = item.transform[5]; 
             
-            // Cherche si une ligne existe déjà à une hauteur similaire
             let foundY = Object.keys(lines).find(existingY => Math.abs(existingY - y) <= yTolerance);
             
             if (!foundY) {
@@ -208,14 +206,13 @@ async function extractTextFromPDF(file) {
             }
         });
         
-        // Génération du texte structuré pour cette page (du haut vers le bas, puis de gauche à droite)
         let pageText = Object.keys(lines)
-            .sort((a, b) => b - a) // En PDF, le Y augmente en montant, donc on trie décroissant
+            .sort((a, b) => b - a) 
             .map(y => {
                 return lines[y]
-                    .sort((a, b) => a.x - b.x) // Tri de gauche à droite
+                    .sort((a, b) => a.x - b.x) 
                     .map(item => item.str)
-                    .join("\t"); // Utilisation de tabulations pour isoler proprement les colonnes
+                    .join("\t"); 
             })
             .join("\n");
             
@@ -228,10 +225,8 @@ function localRegexExtractor(matrixText) {
     const lines = matrixText.split('\n');
     const extracted = {};
     
-    // Initialisation
     mosfetParameters.forEach(p => extracted[p.id] = null);
 
-    // Mots-clés cibles de recherche par ligne
     const patterns = {
         vds: /(?:V_\(BR\)DSS|V_?DS|Drain-to-source voltage)/i,
         id: /(?:I_?D|Continuous drain current)/i,
@@ -254,20 +249,15 @@ function localRegexExtractor(matrixText) {
 
     lines.forEach(line => {
         Object.keys(patterns).forEach(key => {
-            // Si on a déjà capturé ce paramètre (par exemple dans le tableau des "Maximum Ratings"), on passe
             if (extracted[key] !== null) return;
 
             if (patterns[key].test(line)) {
-                // On extrait tous les nombres (entiers ou décimaux) présents uniquement sur CETTE ligne
                 const numbers = line.match(/[0-9]+[.,][0-9]+|[0-9]+/g);
                 if (numbers) {
-                    // Les valeurs de spécifications (Typ/Max) se trouvent à la fin de la ligne (colonnes de droite)
-                    // On filtre les valeurs de test typiques parasites (ex: 20V, 5V, 30A) en lisant de droite à gauche
                     let selectedValue = null;
                     for (let i = numbers.length - 1; i >= 0; i--) {
                         let val = parseFloat(numbers[i].replace(',', '.'));
                         
-                        // Exclusion intelligente des conditions de test récurrentes
                         if ((key === 'rdson' && val > 100) || val === 20 || val === 30) {
                             if (numbers.length > 1) continue; 
                         }
@@ -327,6 +317,22 @@ async function runExtractionForTarget(target, btnElement) {
 
 document.getElementById("btn-extract-A").addEventListener("click", function() { runExtractionForTarget('A', this); });
 document.getElementById("btn-extract-B").addEventListener("click", function() { runExtractionForTarget('B', this); });
+
+// --- INITIALISATION AU CHARGEMENT DE LA PAGE (REMISE EN PLACE) ---
+window.onload = () => {
+    initTable();
+    initDB();
+};
+
+// --- SYSTÈME DE NAVIGATION PAR ONGLETS ---
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active-content'));
+        this.classList.add('active');
+        document.getElementById(this.getAttribute('data-tab')).classList.add('active-content');
+    });
+});
 
 // --- MOTEUR DE CALCUL INTERCEPTANT L'ID TRANSISTOR ---
 function executeLossEngine(target, overrideId = null, overrideValue = null) {
