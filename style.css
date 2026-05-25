@@ -299,3 +299,86 @@ th, td {
     padding: 0.75rem; /* Un peu d'air pour les formules mathématiques */
 }
 
+/* --- AJOUTS COMPLÉMENTAIRES AU FICHIER EXISTANT --- */
+
+header {
+    padding: 0.5rem 2rem; /* Réduction du padding vertical */
+}
+
+.header-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+/* Onglets de navigation */
+.nav-tabs {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.tab-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.tab-btn.active {
+    background: #ffffff;
+    color: var(--primary);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Visibilité des pages */
+.tab-content {
+    display: none;
+    flex: 1;
+    overflow: hidden;
+}
+
+.tab-content.active-content {
+    display: flex;
+}
+
+/* Éléments de formulaire pour le Sweep */
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.control-group label {
+    font-size: 0.9rem;
+    color: var(--secondary);
+}
+
+.custom-select, .control-group input {
+    width: 100%;
+    padding: 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: white;
+    font-size: 0.9rem;
+}
+
+.custom-select:focus, .control-group input:focus {
+    outline: 2px solid var(--primary);
+}
+
+.chart-wrapper {
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px dashed var(--border);
+    padding: 1rem;
+}

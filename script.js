@@ -23,7 +23,7 @@ const mosfetParameters = [
 ];
 
 // État de l'application
-const GROQ_API_KEY = API à METTRE; // ⚠️ Remplace par ta clé gsk_...
+const GROQ_API_KEY = ""; // ⚠️ Remplace par ta clé gsk_...
 let library = [];
 let currentSelectedFile = null;
 let db;
@@ -277,72 +277,72 @@ window.onload = () => {
     initDB();
 };
 
-// --- CALCUL DES PERTES ---
+// --- SYSTÈME DE NAVIGATION PAR ONGLETS ---
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active-content'));
 
-document.getElementById("btn-calculate").addEventListener("click", function() {
-    
-    // Fonction utilitaire pour récupérer une valeur d'input de manière sécurisée
-    const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
+        this.classList.add('active');
+        const targetTab = this.getAttribute('data-tab');
+        document.getElementById(targetTab).classList.add('active-content');
+    });
+});
 
-    // --- 1. Récupération des données du composant (Datasheet) ---
-    const vds_max = getVal("input-vds"); // Non utilisé dans ces calculs, mais Vbus remplace
-    const id_max = getVal("input-id");   // Le courant I_D utilisé pour la commutation (on prend I_rms * sqrt(2) ou ID max, ici on prendra le I_rms pour être réaliste, ou ID de la table. La formule prend I_D).
-    
-    // Unités : mOhm -> Ohm
+
+// --- MOTEUR DE CALCUL CENTRALISÉ ---
+// Permet de calculer les pertes à la volée, optionnellement en écrasant une valeur (utile pour le Sweep)
+function executeLossEngine(overrideId = null, overrideValue = null) {
+    const getVal = (id) => {
+        if (overrideId && overrideId === id) return overrideValue;
+        return parseFloat(document.getElementById(id)?.value) || 0;
+    };
+
+    // 1. Données Composant
     const rdson = getVal("input-rdson") * 1e-3; 
-    
-    // Unités : nC -> C
     const qg = getVal("input-qg") * 1e-9;
     const qgs = getVal("input-qgs") * 1e-9;
     const qgd = getVal("input-qgd") * 1e-9;
     const qrr = getVal("input-qrr") * 1e-9;
-    
-    // Unités : pF -> F
     const coss = getVal("input-coss") * 1e-12;
 
-    // --- 2. Récupération des données de l'application ---
-    const fsw = getVal("sys-fsw") * 1e3; // kHz -> Hz
+    // 2. Données Application
+    const fsw = getVal("sys-fsw") * 1e3; 
     const vbus = getVal("sys-vbus");
     const irms = getVal("sys-irms");
     const d = getVal("sys-d");
-    
     const vdriver = getVal("sys-vdriver");
     const vlow = getVal("sys-vlow");
     const rgate = getVal("sys-rgate");
     const vplateau = getVal("sys-vplateau");
-    const qgs2 = getVal("sys-qgs2") * 1e-9; // nC -> C
+    const qgs2 = getVal("sys-qgs2") * 1e-9;
 
-    // --- 3. L'EXECUTION DES FORMULES ---
-
-    // A. Courants de grille
+    // 3. Calculs intermédiaires
     const i_gate_on = (vdriver - vplateau) / rgate;
     const i_gate_off = (vplateau - vlow) / rgate;
 
-    // B. Temps de commutation (Ton et Toff)
-    // Sécurité anti-division par 0
     let t_on = 0, t_off = 0;
     if (i_gate_on > 0) t_on = (qgs + qgd) / i_gate_on;
     if (i_gate_off > 0) t_off = (qgd + qgs2) / i_gate_off;
 
-    // C. P_sw : Pertes par commutation
-    // Note: Dans un ESC, le I_D commuté est souvent le pic de courant. On va utiliser I_rms * sqrt(2).
     const i_sw = irms * Math.SQRT2; 
+
+    // 4. Dispatch des pertes individuelles (En Watts)
     const p_sw = 0.5 * vbus * i_sw * (t_on + t_off) * fsw;
-
-    // D. P_cond : Pertes par conduction
     const p_cond = rdson * Math.pow(irms, 2) * d;
-
-    // E. P_gate : Pertes du driver de grille
     const p_gate = qg * vdriver * fsw;
-
-    // F. P_rr : Pertes de recouvrement inverse (Reverse Recovery)
     const p_rr = qrr * vbus * fsw;
-
-    // G. P_oss : Pertes par capacité de sortie
     const p_oss = 0.5 * coss * Math.pow(vbus, 2) * fsw;
+    const p_total = p_sw + p_cond + p_gate + p_rr + p_oss;
 
-    // --- 4. AFFICHAGE DES RÉSULTATS AVEC LATEX ---
-    
+    return { t_on, t_off, p_sw, p_cond, p_gate, p_rr, p_oss, p_total };
+}
+
+
+// --- INJECTION DES RÉSULTATS (PAGE 1) ---
+document.getElementById("btn-calculate").addEventListener("click", function() {
+    const res = executeLossEngine();
+
     const tbody = document.getElementById("results-body");
     tbody.innerHTML = `
         <tr>
@@ -353,44 +353,122 @@ document.getElementById("btn-calculate").addEventListener("click", function() {
                 $$T_{on} = \\frac{Q_{gs} + Q_{gd}}{I_{gate\\_on}} \\quad | \\quad T_{off} = \\frac{Q_{gd} + Q_{gs2}}{I_{gate\\_off}}$$
             </td>
             <td>
-                T_on = ${(t_on * 1e9).toFixed(1)} ns<br>
-                T_off = ${(t_off * 1e9).toFixed(1)} ns
+                T_on = ${(res.t_on * 1e9).toFixed(1)} ns<br>
+                T_off = ${(res.t_off * 1e9).toFixed(1)} ns
             </td>
         </tr>
         <tr>
             <td><strong>P_sw</strong><br><small>Pertes de commutation</small></td>
             <td>$$P_{sw} = \\frac{1}{2} \\times V_{bus} \\times I_D \\times (T_{on} + T_{off}) \\times f_{sw}$$</td>
-            <td>${p_sw.toFixed(3)} W</td>
+            <td>${res.p_sw.toFixed(3)} W</td>
         </tr>
         <tr>
             <td><strong>P_cond_FET</strong><br><small>Pertes de conduction</small></td>
             <td>$$P_{cond\\_FET} = R_{DS(on)} \\times I_{rms}^2 \\times D$$</td>
-            <td>${p_cond.toFixed(3)} W</td>
+            <td>${res.p_cond.toFixed(3)} W</td>
         </tr>
         <tr>
             <td><strong>P_gate</strong><br><small>Pertes de charge de grille</small></td>
             <td>$$P_{gate} = Q_{g(tot)} \\times V_{driver} \\times f_{sw}$$</td>
-            <td>${p_gate.toFixed(3)} W</td>
+            <td>${res.p_gate.toFixed(3)} W</td>
         </tr>
         <tr>
             <td><strong>P_rr</strong><br><small>Pertes recouvrement inverse</small></td>
             <td>$$P_{rr} = Q_{rr} \\times V_{bus} \\times f_{sw}$$</td>
-            <td>${p_rr.toFixed(3)} W</td>
+            <td>${res.p_rr.toFixed(3)} W</td>
         </tr>
         <tr>
             <td><strong>P_oss</strong><br><small>Pertes de capacité de sortie</small></td>
             <td>$$P_{oss} = \\frac{1}{2} \\cdot C_{oss} \\cdot V_{bus}^2 \\cdot f_{sw}$$</td>
-            <td>${p_oss.toFixed(3)} W</td>
+            <td>${res.p_oss.toFixed(3)} W</td>
         </tr>
     `;
 
-    const p_total = p_sw + p_cond + p_gate + p_rr + p_oss;
-    document.getElementById("total-loss").innerHTML = `🔥 Puissance dissipée totale (estimation) : ${p_total.toFixed(2)} W`;
-    
+    document.getElementById("total-loss").innerHTML = `🔥 Puissance dissipée totale (estimation) : ${res.p_total.toFixed(2)} W`;
     document.getElementById("results-output").style.display = "block";
 
-    // On force MathJax à relire le tableau pour dessiner les belles formules
     if (window.MathJax) {
         MathJax.typesetPromise();
     }
+});
+
+
+// --- GENERATION DU BALAYAGE PARAMÉTRIQUE & CHART (PAGE 2) ---
+let chartInstance = null; // Stockage de l'instance Chart.js pour pouvoir la détruire/recréer proprement
+
+document.getElementById("btn-run-sweep").addEventListener("click", function() {
+    const targetParamId = document.getElementById("sweep-param").value;
+    const minVal = parseFloat(document.getElementById("sweep-min").value) || 0;
+    const maxVal = parseFloat(document.getElementById("sweep-max").value) || 100;
+    const steps = parseInt(document.getElementById("sweep-steps").value) || 20;
+
+    if (minVal >= maxVal) {
+        alert("La valeur minimale doit être inférieure à la valeur maximale.");
+        return;
+    }
+
+    // Génération des tableaux de données pour Chart.js
+    const labels = [];
+    const dataConduction = [];
+    const dataSwitching = [];
+    const dataGate = [];
+    const dataReverseRecovery = [];
+    const dataOss = [];
+
+    const stepSize = (maxVal - minVal) / (steps - 1);
+
+    for (let i = 0; i < steps; i++) {
+        const currentValue = minVal + (stepSize * i);
+        labels.push(currentValue.toFixed(1));
+
+        // On appelle le moteur de calcul en forçant la valeur du paramètre courant
+        const res = executeLossEngine(targetParamId, currentValue);
+
+        dataConduction.push(res.p_cond);
+        dataSwitching.push(res.p_sw);
+        dataGate.push(res.p_gate);
+        dataReverseRecovery.push(res.p_rr);
+        dataOss.push(res.p_oss);
+    }
+
+    // Récupération de l'élément Canvas
+    const ctx = document.getElementById('chart-losses').getContext('2d');
+
+    // Si un graphique existait déjà, on le détruit pour éviter les bugs de superposition visuelle
+    if (chartInstance) {
+        chartInstance.destroy();
+    }
+
+    // Initialisation du nouveau graphique Chart.js (Style aires empilées pour voir la proportion de chaque perte)
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: 'Conduction (P_cond)', data: dataConduction, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.15)', fill: true, tension: 0.1 },
+                { label: 'Commutation (P_sw)', data: dataSwitching, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.15)', fill: true, tension: 0.1 },
+                { label: 'Grille (P_gate)', data: dataGate, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.15)', fill: true, tension: 0.1 },
+                { label: 'Recouvrement (P_rr)', data: dataReverseRecovery, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', fill: true, tension: 0.1 },
+                { label: 'Capacité Sortie (P_oss)', data: dataOss, borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.15)', fill: true, tension: 0.1 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: { mode: 'index', intersect: false }
+            },
+            scales: {
+                x: {
+                    title: { display: true, text: `Valeur du paramètre sélectionné` }
+                },
+                y: {
+                    stacked: true, // Empilement des pertes pour voir directement le total dissipé graphiquement
+                    title: { display: true, text: 'Pertes dissipées totales (W)' },
+                    beginAtZero: true
+                }
+            }
+        }
+    });
 });
