@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calculateur de Pertes ESC (Local)</title>
+    <title>Calculateur de Pertes ESC</title>
     <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -17,7 +17,7 @@
         <div class="header-main">
             <div>
                 <h1>⚡ ESC Loss Calculator</h1>
-                <p>Outil d'analyse des pertes — Version Analyseur Local (Sans IA)</p>
+                <p>Outil d'analyse des pertes pour MOSFETs de puissance</p>
             </div>
             <nav class="nav-tabs">
                 <button class="tab-btn active" data-tab="tab-dashboard">📊 Calculateur Principal</button>
@@ -49,6 +49,14 @@
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <div class="modulation-zone" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <h2 style="font-size: 1.1rem; margin-bottom: 0.5rem;">🎛️ Type de Modulation</h2>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button id="btn-mod-foc" class="tab-btn active" style="flex: 1; padding: 0.5rem; color: var(--text-main); background: #e2e8f0;">FOC</button>
+                        <button id="btn-mod-trapeze" class="tab-btn" style="flex: 1; padding: 0.5rem; color: white; background: var(--secondary);">Trapèze</button>
+                    </div>
                 </div>
             </aside>
 
@@ -92,6 +100,13 @@
                                     </tr>
                                 </thead>
                                 <tbody>
+                                    <tr id="row-tblock" style="background: #fffbeb;">
+                                        <td><strong>t_block</strong></td>
+                                        <td>Durée d'un bloc de conduction</td>
+                                        <td><input type="number" id="sys-A-tblock" value="2.0" step="0.1"></td>
+                                        <td><input type="number" id="sys-B-tblock" value="2.0" step="0.1"></td>
+                                        <td>ms</td>
+                                    </tr>
                                     <tr>
                                         <td><strong>f_sw</strong></td>
                                         <td>Fréquence de découpage</td>
@@ -176,13 +191,13 @@
 
                     <div class="results-column">
                         <div class="calculation-zone">
-                            <h2>🧮 3. Résultats & Pertes</h2>
+                            <h2>🧮 3. Résultats & Énergies Dissipées</h2>
                             <button id="btn-calculate" class="btn btn-primary">Calculer les pertes</button>
                             <div id="results-output" class="results" style="display: none;">
                                 <table class="library-table">
                                     <thead>
                                         <tr>
-                                            <th>Type de Perte</th>
+                                            <th>Type d'Énergie</th>
                                             <th>Formule appliquée</th>
                                             <th class="name-A" style="color: #3b82f6;">MOSFET A</th>
                                             <th class="name-B" style="color: #ef4444;">MOSFET B</th>
@@ -248,7 +263,7 @@
 
                     <div class="results-column" style="flex: 2;">
                         <div class="calculation-zone">
-                            <h2>📊 Courbes d'évolution des pertes</h2>
+                            <h2>📊 Courbes d'évolution des énergies par cycle</h2>
                             <div class="chart-wrapper"
                                 style="position: relative; height:450px; width:100%; margin-top: 1rem;">
                                 <canvas id="chart-losses"></canvas>

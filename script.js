@@ -31,6 +31,9 @@ let nameMOSFET_A = "MOSFET A";
 let nameMOSFET_B = "MOSFET B";
 let dashboardChartInstance = null;
 
+// État de la modulation globale ('FOC' ou 'TRAPEZE')
+let currentModulation = 'FOC';
+
 // --- GESTION DE LA BASE DE DONNÉES (IndexedDB) ---
 
 function initDB() {
@@ -174,6 +177,23 @@ function selectFile(index) {
     document.getElementById("btn-extract-B").disabled = false;
 }
 
+// --- GESTION DU TOGGLE DE MODULATION ---
+document.getElementById("btn-mod-foc").addEventListener("click", function() {
+    currentModulation = 'FOC';
+    this.classList.add("active");
+    this.style.background = "#e2e8f0";
+    document.getElementById("btn-mod-trapeze").classList.remove("active");
+    document.getElementById("btn-mod-trapeze").style.background = "var(--secondary)";
+});
+
+document.getElementById("btn-mod-trapeze").addEventListener("click", function() {
+    currentModulation = 'TRAPEZE';
+    this.classList.add("active");
+    this.style.background = "#e2e8f0";
+    document.getElementById("btn-mod-foc").classList.remove("active");
+    document.getElementById("btn-mod-foc").style.background = "var(--secondary)";
+});
+
 // --- PARSER GÉOMÉTRIQUE ROBUSTE LINE-BY-LINE ---
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
@@ -193,12 +213,10 @@ async function extractTextFromPDF(file) {
         
         textContent.items.forEach(item => {
             if (!item.str.trim()) return;
-            
             const x = item.transform[4]; 
             const y = item.transform[5]; 
             
             let foundY = Object.keys(lines).find(existingY => Math.abs(existingY - y) <= yTolerance);
-            
             if (!foundY) {
                 lines[y] = [{ x: x, str: item.str }];
             } else {
@@ -257,7 +275,6 @@ function localRegexExtractor(matrixText) {
                     let selectedValue = null;
                     for (let i = numbers.length - 1; i >= 0; i--) {
                         let val = parseFloat(numbers[i].replace(',', '.'));
-                        
                         if ((key === 'rdson' && val > 100) || val === 20 || val === 30) {
                             if (numbers.length > 1) continue; 
                         }
@@ -269,7 +286,6 @@ function localRegexExtractor(matrixText) {
             }
         });
     });
-
     return extracted;
 }
 
@@ -318,27 +334,15 @@ async function runExtractionForTarget(target, btnElement) {
 document.getElementById("btn-extract-A").addEventListener("click", function() { runExtractionForTarget('A', this); });
 document.getElementById("btn-extract-B").addEventListener("click", function() { runExtractionForTarget('B', this); });
 
-// --- INITIALISATION AU CHARGEMENT DE LA PAGE (REMISE EN PLACE) ---
 window.onload = () => {
     initTable();
     initDB();
 };
 
-// --- SYSTÈME DE NAVIGATION PAR ONGLETS ---
-document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active-content'));
-        this.classList.add('active');
-        document.getElementById(this.getAttribute('data-tab')).classList.add('active-content');
-    });
-});
-
-// --- MOTEUR DE CALCUL INTERCEPTANT L'ID TRANSISTOR ---
+// --- MOTEUR DE CALCUL CONVERTISSABLE ET SÉCURISÉ EN ÉNERGIE (mJ) ---
 function executeLossEngine(target, overrideId = null, overrideValue = null) {
     const getVal = (id) => {
         if (overrideId && overrideId === id) return overrideValue;
-        
         let finalId = id;
         if (id.startsWith("input-")) {
             finalId = id.replace("input-", `input-${target}-`);
@@ -368,6 +372,9 @@ function executeLossEngine(target, overrideId = null, overrideValue = null) {
     
     const tdton = getVal("sys-tdton") * 1e-9;
     const tdtoff = getVal("sys-tdtoff") * 1e-9;
+    
+    // Récupération de t_block (ms -> secondes)
+    const tblock = getVal("sys-tblock") * 1e-3;
 
     const i_gate_on = (vdriver - vplateau) / rgate;
     const i_gate_off = (vplateau - vlow) / rgate;
@@ -378,23 +385,42 @@ function executeLossEngine(target, overrideId = null, overrideValue = null) {
 
     const i_sw = irms * Math.SQRT2; 
     
-    const p_sw = 0.5 * vbus * i_sw * (t_on + t_off) * fsw;
-    const p_cond = rdson * Math.pow(irms, 2) * d;
-    const p_gate = qg * vdriver * fsw;
-    const p_rr = qrr * vbus * fsw;
-    const p_oss = 0.5 * coss * Math.pow(vbus, 2) * fsw;
-    const p_dt = (tdton + tdtoff) * vsd * i_sw * fsw;
-    
-    const p_total = p_sw + p_cond + p_gate + p_rr + p_oss + p_dt;
+    // Fenêtre temporelle d'activité du composant par cycle électrique global T_e
+    const duration_active = (currentModulation === 'TRAPEZE') ? (2 * tblock) : (6 * tblock);
 
-    return { t_on, t_off, p_sw, p_cond, p_gate, p_rr, p_oss, p_dt, p_total };
+    // 1. Énergie de chaque composante dissipée par cycle complet (en Joules)
+    const e_sw = (0.5 * vbus * i_sw * (t_on + t_off) * fsw) * duration_active;
+    const e_cond = (rdson * Math.pow(irms, 2) * d) * duration_active;
+    const e_gate = (qg * vdriver * fsw) * duration_active;
+    const e_rr = (qrr * vbus * fsw) * duration_active;
+    const e_oss = (0.5 * coss * Math.pow(vbus, 2) * fsw) * duration_active;
+    const e_dt = ((tdton + tdtoff) * vsd * i_sw * fsw) * duration_active;
+    
+    // 2. Conversion finale en milliJoules (J * 1000)
+    const mJ_sw = e_sw * 1000;
+    const mJ_cond = e_cond * 1000;
+    const mJ_gate = e_gate * 1000;
+    const mJ_rr = e_rr * 1000;
+    const mJ_oss = e_oss * 1000;
+    const mJ_dt = e_dt * 1000;
+    
+    const mJ_total = mJ_sw + mJ_cond + mJ_gate + mJ_rr + mJ_oss + mJ_dt;
+
+    return { t_on, t_off, mJ_sw, mJ_cond, mJ_gate, mJ_rr, mJ_oss, mJ_dt, mJ_total, tblock };
 }
 
-// --- AFFICHAGE COMPARATIF (PAGE 1) + CONFIGURATION HISTOGRAMME ---
+// --- AFFICHAGE COMPARATIF DYNAMIQUE (PAGE 1) ---
 document.getElementById("btn-calculate").addEventListener("click", function() {
     const resA = executeLossEngine('A');
     const resB = executeLossEngine('B');
     
+    // Adaptation sémantique des équations LaTeX selon la base de modulation temporelle choisie
+    const blockFactor = currentModulation === 'TRAPEZE' ? '2 \\cdot t_{block}' : '6 \\cdot t_{block}';
+    
+    const formulaSw = `$$E_{sw} = \\left(\\frac{1}{2} V_{bus} I_D (T_{on} + T_{off}) f_{sw}\\right) \\times (${blockFactor})$$`;
+    const formulaCond = `$$E_{cond} = \\left(R_{DS(on)} I_{rms}^2 D\\right) \\times (${blockFactor})$$`;
+    const formulaDt = `$$E_{dt} = \\left((t_{dt\\_on} + t_{dt\\_off}) V_{SD} I_{out} f_{sw}\\right) \\times (${blockFactor})$$`;
+
     const tbody = document.getElementById("results-body");
     tbody.innerHTML = `
         <tr>
@@ -404,46 +430,46 @@ document.getElementById("btn-calculate").addEventListener("click", function() {
             <td style="color: #dc2626;">On: ${(resB.t_on * 1e9).toFixed(1)} ns<br>Off: ${(resB.t_off * 1e9).toFixed(1)} ns</td>
         </tr>
         <tr>
-            <td><strong>P_sw</strong> (Commutation)</td>
-            <td>$$P_{sw} = \\frac{1}{2} V_{bus} I_D (T_{on} + T_{off}) f_{sw}$$</td>
-            <td>${resA.p_sw.toFixed(3)} W</td>
-            <td>${resB.p_sw.toFixed(3)} W</td>
+            <td><strong>E_sw</strong> (Commutation)</td>
+            <td>${formulaSw}</td>
+            <td>${resA.mJ_sw.toFixed(4)} mJ</td>
+            <td>${resB.mJ_sw.toFixed(4)} mJ</td>
         </tr>
         <tr>
-            <td><strong>P_cond_FET</strong> (Conduction)</td>
-            <td>$$P_{cond} = R_{DS(on)} I_{rms}^2 D$$</td>
-            <td>${resA.p_cond.toFixed(3)} W</td>
-            <td>${resB.p_cond.toFixed(3)} W</td>
+            <td><strong>E_cond_FET</strong> (Conduction)</td>
+            <td>${formulaCond}</td>
+            <td>${resA.mJ_cond.toFixed(4)} mJ</td>
+            <td>${resB.mJ_cond.toFixed(4)} mJ</td>
         </tr>
         <tr>
-            <td><strong>P_dt</strong> (Temps mort)</td>
-            <td>$$P_{dt} = (t_{dt\\_on} + t_{dt\\_off}) \\times V_{SD} \\times I_{out} \\times f_{sw}$$</td>
-            <td>${resA.p_dt.toFixed(3)} W</td>
-            <td>${resB.p_dt.toFixed(3)} W</td>
+            <td><strong>E_dt</strong> (Temps mort)</td>
+            <td>${formulaDt}</td>
+            <td>${resA.mJ_dt.toFixed(4)} mJ</td>
+            <td>${resB.mJ_dt.toFixed(4)} mJ</td>
         </tr>
         <tr>
-            <td><strong>P_gate</strong> (Driver)</td>
-            <td>$$P_{gate} = Q_{g} V_{driver} f_{sw}$$</td>
-            <td>${resA.p_gate.toFixed(3)} W</td>
-            <td>${resB.p_gate.toFixed(3)} W</td>
+            <td><strong>E_gate</strong> (Driver)</td>
+            <td>$$E_{gate} = (Q_{g} V_{driver} f_{sw}) \\times (${blockFactor})$$</td>
+            <td>${resA.mJ_gate.toFixed(4)} mJ</td>
+            <td>${resB.mJ_gate.toFixed(4)} mJ</td>
         </tr>
         <tr>
-            <td><strong>P_rr</strong> (Recouvrement)</td>
-            <td>$$P_{rr} = Q_{rr} V_{bus} f_{sw}$$</td>
-            <td>${resA.p_rr.toFixed(3)} W</td>
-            <td>${resB.p_rr.toFixed(3)} W</td>
+            <td><strong>E_rr</strong> (Recouvrement)</td>
+            <td>$$E_{rr} = (Q_{rr} V_{bus} f_{sw}) \\times (${blockFactor})$$</td>
+            <td>${resA.mJ_rr.toFixed(4)} mJ</td>
+            <td>${resB.mJ_rr.toFixed(4)} mJ</td>
         </tr>
         <tr>
-            <td><strong>P_oss</strong> (C_oss)</td>
-            <td>$$P_{oss} = \\frac{1}{2} C_{oss} V_{bus}^2 f_{sw}$$</td>
-            <td>${resA.p_oss.toFixed(3)} W</td>
-            <td>${resB.p_oss.toFixed(3)} W</td>
+            <td><strong>E_oss</strong> (C_oss)</td>
+            <td>$$E_{oss} = \\left(\\frac{1}{2} C_{oss} V_{bus}^2 f_{sw}\\right) \\times (${blockFactor})$$</td>
+            <td>${resA.mJ_oss.toFixed(4)} mJ</td>
+            <td>${resB.mJ_oss.toFixed(4)} mJ</td>
         </tr>
     `;
 
     document.getElementById("total-loss").innerHTML = `
-        <span style="color: #2563eb;">Total ${nameMOSFET_A} : ${resA.p_total.toFixed(2)} W</span><br>
-        <span style="color: #dc2626;">Total ${nameMOSFET_B} : ${resB.p_total.toFixed(2)} W</span>
+        <span style="color: #2563eb;">Énergie totale dissipée ${nameMOSFET_A} : ${resA.mJ_total.toFixed(3)} mJ / cycle</span><br>
+        <span style="color: #dc2626;">Énergie totale dissipée ${nameMOSFET_B} : ${resB.mJ_total.toFixed(3)} mJ / cycle</span>
     `;
     
     document.getElementById("results-output").style.display = "block";
@@ -457,25 +483,19 @@ document.getElementById("btn-calculate").addEventListener("click", function() {
         data: {
             labels: [nameMOSFET_A, nameMOSFET_B],
             datasets: [
-                { label: 'Commutation (P_sw)', data: [resA.p_sw, resB.p_sw], backgroundColor: '#3b82f6' },
-                { label: 'Conduction (P_cond)', data: [resA.p_cond, resB.p_cond], backgroundColor: '#ef4444' },
-                { label: 'Temps mort (P_dt)', data: [resA.p_dt, resB.p_dt], backgroundColor: '#10b981' },
-                { label: 'Grille (P_gate)', data: [resA.p_gate, resB.p_gate], backgroundColor: '#f59e0b' },
-                { label: 'Recouvrement (P_rr)', data: [resA.p_rr, resB.p_rr], backgroundColor: '#8b5cf6' },
-                { label: 'Capacité Sortie (P_oss)', data: [resA.p_oss, resB.p_oss], backgroundColor: '#06b6d4' }
+                { label: 'Commutation (E_sw)', data: [resA.mJ_sw, resB.mJ_sw], backgroundColor: '#3b82f6' },
+                { label: 'Conduction (E_cond)', data: [resA.mJ_cond, resB.mJ_cond], backgroundColor: '#ef4444' },
+                { label: 'Temps mort (E_dt)', data: [resA.mJ_dt, resB.mJ_dt], backgroundColor: '#10b981' },
+                { label: 'Grille (E_gate)', data: [resA.mJ_gate, resB.mJ_gate], backgroundColor: '#f59e0b' },
+                { label: 'Recouvrement (E_rr)', data: [resA.mJ_rr, resB.mJ_rr], backgroundColor: '#8b5cf6' },
+                { label: 'Capacité Sortie (E_oss)', data: [resA.mJ_oss, resB.mJ_oss], backgroundColor: '#06b6d4' }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'top' },
-                tooltip: { mode: 'index', intersect: false }
-            },
-            scales: {
-                x: { stacked: true },
-                y: { stacked: true, title: { display: true, text: 'Puissance dissipée totale (W)' }, beginAtZero: true }
-            }
+            plugins: { legend: { position: 'top' }, tooltip: { mode: 'index', intersect: false } },
+            scales: { x: { stacked: true }, y: { stacked: true, title: { display: true, text: 'Énergie dissipée par cycle (mJ)' }, beginAtZero: true } }
         }
     });
 });
@@ -506,8 +526,8 @@ document.getElementById("btn-run-sweep").addEventListener("click", function() {
         const resA = executeLossEngine('A', targetParamId, currentValue);
         const resB = executeLossEngine('B', targetParamId, currentValue);
 
-        dataTotalA.push(resA.p_total);
-        dataTotalB.push(resB.p_total);
+        dataTotalA.push(resA.mJ_total);
+        dataTotalB.push(resB.mJ_total);
     }
 
     const ctx = document.getElementById('chart-losses').getContext('2d');
@@ -528,7 +548,7 @@ document.getElementById("btn-run-sweep").addEventListener("click", function() {
             plugins: { tooltip: { mode: 'index', intersect: false } },
             scales: {
                 x: { title: { display: true, text: 'Variation du paramètre système' } },
-                y: { stacked: false, title: { display: true, text: 'Pertes totales cumulées (W)' }, beginAtZero: true }
+                y: { stacked: false, title: { display: true, text: 'Énergie cumulée par cycle électrique (mJ)' }, beginAtZero: true }
             }
         }
     });
