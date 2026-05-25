@@ -28,6 +28,10 @@ let library = [];
 let currentSelectedFile = null;
 let db;
 
+// Variables globales pour stocker les noms personnalisés des MOSFETs
+let nameMOSFET_A = "MOSFET A";
+let nameMOSFET_B = "MOSFET B";
+
 // --- GESTION DE LA BASE DE DONNÉES (IndexedDB) ---
 
 function initDB() {
@@ -102,6 +106,11 @@ function initTable() {
         `;
         tbody.appendChild(row);
     });
+}
+
+function updateNamesInUI() {
+    document.querySelectorAll(".name-A").forEach(el => el.textContent = nameMOSFET_A);
+    document.querySelectorAll(".name-B").forEach(el => el.textContent = nameMOSFET_B);
 }
 
 // Upload
@@ -206,6 +215,13 @@ async function runExtractionForTarget(target, btnElement) {
     
     try {
         const fileItem = library[currentSelectedFile];
+        
+        // Extraction et assignation immédiate du nom du composant basé sur le fichier
+        const cleanedName = fileItem.name.replace(/\.[^/.]+$/, ""); // Retire l'extension .pdf
+        if (target === 'A') nameMOSFET_A = cleanedName;
+        if (target === 'B') nameMOSFET_B = cleanedName;
+        updateNamesInUI(); // Met à jour instantanément les titres dans le HTML
+        
         const rawText = await extractTextFromPDF(fileItem.file);
         
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -273,7 +289,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // --- MOTEUR DE CALCUL INTERCEPTANT L'ID TRANSISTOR ---
 function executeLossEngine(target, overrideId = null, overrideValue = null) {
     const getVal = (id) => {
-        // Si le Sweep force une valeur sur le paramètre courant, on l'applique aux deux calculs
         if (overrideId && overrideId === id) return overrideValue;
         
         let finalId = id;
@@ -294,7 +309,7 @@ function executeLossEngine(target, overrideId = null, overrideValue = null) {
     const vsd = getVal("input-vsd");
     const qrr = getVal("input-qrr") * 1e-9;
 
-    // 2. Données Système & Driver (Tableau 2 - Mappées sur -A- ou -B-)
+    // 2. Données Système & Driver (Tableau 2)
     const fsw = getVal("sys-fsw") * 1e3; 
     const vbus = getVal("sys-vbus");
     const irms = getVal("sys-irms");
@@ -383,8 +398,8 @@ document.getElementById("btn-calculate").addEventListener("click", function() {
     `;
 
     document.getElementById("total-loss").innerHTML = `
-        <span style="color: #2563eb;">Total MOSFET A : ${resA.p_total.toFixed(2)} W</span><br>
-        <span style="color: #dc2626;">Total MOSFET B : ${resB.p_total.toFixed(2)} W</span>
+        <span style="color: #2563eb;">Total ${nameMOSFET_A} : ${resA.p_total.toFixed(2)} W</span><br>
+        <span style="color: #dc2626;">Total ${nameMOSFET_B} : ${resB.p_total.toFixed(2)} W</span>
     `;
     
     document.getElementById("results-output").style.display = "block";
@@ -429,8 +444,8 @@ document.getElementById("btn-run-sweep").addEventListener("click", function() {
         data: {
             labels: labels,
             datasets: [
-                { label: 'Total MOSFET A', data: dataTotalA, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.05)', borderWidth: 3, tension: 0.1 },
-                { label: 'Total MOSFET B', data: dataTotalB, borderColor: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.05)', borderWidth: 3, tension: 0.1 }
+                { label: `Total ${nameMOSFET_A}`, data: dataTotalA, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.05)', borderWidth: 3, tension: 0.1 },
+                { label: `Total ${nameMOSFET_B}`, data: dataTotalB, borderColor: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.05)', borderWidth: 3, tension: 0.1 }
             ]
         },
         options: {
