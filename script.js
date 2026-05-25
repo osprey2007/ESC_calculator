@@ -32,6 +32,9 @@ let db;
 let nameMOSFET_A = "MOSFET A";
 let nameMOSFET_B = "MOSFET B";
 
+// Instance globale pour l'histogramme de l'en-tête principal
+let dashboardChartInstance = null;
+
 // --- GESTION DE LA BASE DE DONNÉES (IndexedDB) ---
 
 function initDB() {
@@ -216,11 +219,10 @@ async function runExtractionForTarget(target, btnElement) {
     try {
         const fileItem = library[currentSelectedFile];
         
-        // Extraction et assignation immédiate du nom du composant basé sur le fichier
-        const cleanedName = fileItem.name.replace(/\.[^/.]+$/, ""); // Retire l'extension .pdf
+        const cleanedName = fileItem.name.replace(/\.[^/.]+$/, ""); 
         if (target === 'A') nameMOSFET_A = cleanedName;
         if (target === 'B') nameMOSFET_B = cleanedName;
-        updateNamesInUI(); // Met à jour instantanément les titres dans le HTML
+        updateNamesInUI(); 
         
         const rawText = await extractTextFromPDF(fileItem.file);
         
@@ -346,7 +348,7 @@ function executeLossEngine(target, overrideId = null, overrideValue = null) {
     return { t_on, t_off, p_sw, p_cond, p_gate, p_rr, p_oss, p_dt, p_total };
 }
 
-// --- AFFICHAGE COMPARATIF (PAGE 1) ---
+// --- AFFICHAGE COMPARATIF (PAGE 1) + CONSTRUTION HISTOGRAMME ---
 document.getElementById("btn-calculate").addEventListener("click", function() {
     const resA = executeLossEngine('A');
     const resB = executeLossEngine('B');
@@ -404,6 +406,41 @@ document.getElementById("btn-calculate").addEventListener("click", function() {
     
     document.getElementById("results-output").style.display = "block";
     if (window.MathJax) MathJax.typesetPromise();
+
+    // --- NOUVEAU : RENDU DE L'HISTOGRAMME EMPILÉ DE LA PREMIÈRE PAGE ---
+    const ctxDash = document.getElementById('chart-dashboard-losses').getContext('2d');
+    if (dashboardChartInstance) dashboardChartInstance.destroy();
+
+    dashboardChartInstance = new Chart(ctxDash, {
+        type: 'bar',
+        data: {
+            labels: [nameMOSFET_A, nameMOSFET_B],
+            datasets: [
+                { label: 'Commutation (P_sw)', data: [resA.p_sw, resB.p_sw], backgroundColor: '#3b82f6' },
+                { label: 'Conduction (P_cond)', data: [resA.p_cond, resB.p_cond], backgroundColor: '#ef4444' },
+                { label: 'Temps mort (P_dt)', data: [resA.p_dt, resB.p_dt], backgroundColor: '#10b981' },
+                { label: 'Grille (P_gate)', data: [resA.p_gate, resB.p_gate], backgroundColor: '#f59e0b' },
+                { label: 'Recouvrement (P_rr)', data: [resA.p_rr, resB.p_rr], backgroundColor: '#8b5cf6' },
+                { label: 'Capacité Sortie (P_oss)', data: [resA.p_oss, resB.p_oss], backgroundColor: '#06b6d4' }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: { mode: 'index', intersect: false }
+            },
+            scales: {
+                x: { stacked: true },
+                y: { 
+                    stacked: true, 
+                    title: { display: true, text: 'Puissance dissipée totale (W)' }, 
+                    beginAtZero: true 
+                }
+            }
+        }
+    });
 });
 
 // --- BALAYAGE COMPARATIF DE DEUX COURBES (PAGE 2) ---
