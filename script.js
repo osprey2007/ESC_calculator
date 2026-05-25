@@ -23,16 +23,12 @@ const mosfetParameters = [
 ];
 
 // État de l'application
-const GROQ_API_KEY = ""; // ⚠️ Remplace par ta clé gsk_... si nécessaire
 let library = [];
 let currentSelectedFile = null;
 let db;
 
-// Variables globales pour stocker les noms personnalisés des MOSFETs
 let nameMOSFET_A = "MOSFET A";
 let nameMOSFET_B = "MOSFET B";
-
-// Instance globale pour l'histogramme de l'en-tête principal
 let dashboardChartInstance = null;
 
 // --- GESTION DE LA BASE DE DONNÉES (IndexedDB) ---
@@ -77,7 +73,6 @@ function loadLibraryFromDB(selectLast = false) {
 
 function deleteFile(id, event) {
     event.stopPropagation();
-    
     const transaction = db.transaction(["pdfs"], "readwrite");
     const store = transaction.objectStore("pdfs");
     store.delete(id);
@@ -95,7 +90,7 @@ function deleteFile(id, event) {
 
 function initTable() {
     const tbody = document.getElementById("table-body");
-    if (tbody.children.length > 0) return; // Évite de réinitialiser et d'effacer les données existantes
+    if (tbody.children.length > 0) return;
     tbody.innerHTML = ""; 
     
     mosfetParameters.forEach(param => {
@@ -116,7 +111,6 @@ function updateNamesInUI() {
     document.querySelectorAll(".name-B").forEach(el => el.textContent = nameMOSFET_B);
 }
 
-// Upload
 document.getElementById("pdf-upload").addEventListener("change", function(event) {
     const files = event.target.files;
     let addedFiles = 0;
@@ -137,7 +131,6 @@ document.getElementById("pdf-upload").addEventListener("change", function(event)
             loadLibraryFromDB(true);
         }
     };
-    
     event.target.value = ""; 
 });
 
@@ -181,112 +174,159 @@ function selectFile(index) {
     document.getElementById("btn-extract-B").disabled = false;
 }
 
-// --- EXTRACTION AVEC PDF.JS + GROQ API ---
+// --- PARSER GÉOMÉTRIQUE ROBUSTE LINE-BY-LINE ---
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
 async function extractTextFromPDF(file) {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
-    let fullText = "";
-    const maxPages = Math.min(pdf.numPages, 3);
+    let structuredText = "";
+    
+    const maxPages = Math.min(pdf.numPages, 4); 
     for (let i = 1; i <= maxPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(" ");
-        fullText += pageText + " ";
+        
+        // Reconstruction géométrique des lignes physiques du tableau
+        let lines = {};
+        const yTolerance = 4; // Fusionne les éléments alignés à +/- 4 pixels près sur l'axe horizontal
+        
+        textContent.items.forEach(item => {
+            if (!item.str.trim()) return;
+            
+            const x = item.transform[4]; // Coordonnée X
+            const y = item.transform[5]; // Coordonnée Y
+            
+            // Cherche si une ligne existe déjà à une hauteur similaire
+            let foundY = Object.keys(lines).find(existingY => Math.abs(existingY - y) <= yTolerance);
+            
+            if (!foundY) {
+                lines[y] = [{ x: x, str: item.str }];
+            } else {
+                lines[foundY].push({ x: x, str: item.str });
+            }
+        });
+        
+        // Génération du texte structuré pour cette page (du haut vers le bas, puis de gauche à droite)
+        let pageText = Object.keys(lines)
+            .sort((a, b) => b - a) // En PDF, le Y augmente en montant, donc on trie décroissant
+            .map(y => {
+                return lines[y]
+                    .sort((a, b) => a.x - b.x) // Tri de gauche à droite
+                    .map(item => item.str)
+                    .join("\t"); // Utilisation de tabulations pour isoler proprement les colonnes
+            })
+            .join("\n");
+            
+        structuredText += pageText + "\n";
     }
-    return fullText;
+    return structuredText;
 }
 
-const systemPrompt = `
-Tu es un expert en électronique. Extraits les paramètres du MOSFET depuis le texte.
-Renvoie UNIQUEMENT un objet JSON valide, sans markdown. Si non trouvé, mets null.
-Clés: vds, id, rdson, vgsth, qg, qgs, qgd, tdon, tr, tdoff, tf, ciss, coss, crss, vsd, trr, qrr, rthjc, rthja, tjmax.
-`;
+function localRegexExtractor(matrixText) {
+    const lines = matrixText.split('\n');
+    const extracted = {};
+    
+    // Initialisation
+    mosfetParameters.forEach(p => extracted[p.id] = null);
+
+    // Mots-clés cibles de recherche par ligne
+    const patterns = {
+        vds: /(?:V_\(BR\)DSS|V_?DS|Drain-to-source voltage)/i,
+        id: /(?:I_?D|Continuous drain current)/i,
+        rdson: /(?:R_?DS\s*\(on\)|RDS\(on\)|On Resistance)/i,
+        vgsth: /(?:V_?GS\s*\(th\)|VGS\(th\)|Gate-to-source threshold)/i,
+        qg: /(?:Q_?g|Total gate charge)/i,
+        qgs: /(?:Q_?gs|Gate-to-source charge)/i,
+        qgd: /(?:Q_?gd|Gate-to-drain charge)/i,
+        tdon: /(?:t_?d\s*\(on\)|turn-on delay)/i,
+        tr: /(?:t_?r|rise time)/i,
+        tdoff: /(?:t_?d\s*\(off\)|turn-off delay)/i,
+        tf: /(?:t_?f|fall time)/i,
+        ciss: /(?:C_?iss|Input capacitance)/i,
+        coss: /(?:C_?oss|Output capacitance)/i,
+        crss: /(?:C_?rss|Reverse transfer capacitance)/i,
+        vsd: /(?:V_?SD|Source-drain forward|Diode forward)/i,
+        trr: /(?:t_?rr|Reverse recovery time)/i,
+        qrr: /(?:Q_?rr|Reverse recovery charge)/i
+    };
+
+    lines.forEach(line => {
+        Object.keys(patterns).forEach(key => {
+            // Si on a déjà capturé ce paramètre (par exemple dans le tableau des "Maximum Ratings"), on passe
+            if (extracted[key] !== null) return;
+
+            if (patterns[key].test(line)) {
+                // On extrait tous les nombres (entiers ou décimaux) présents uniquement sur CETTE ligne
+                const numbers = line.match(/[0-9]+[.,][0-9]+|[0-9]+/g);
+                if (numbers) {
+                    // Les valeurs de spécifications (Typ/Max) se trouvent à la fin de la ligne (colonnes de droite)
+                    // On filtre les valeurs de test typiques parasites (ex: 20V, 5V, 30A) en lisant de droite à gauche
+                    let selectedValue = null;
+                    for (let i = numbers.length - 1; i >= 0; i--) {
+                        let val = parseFloat(numbers[i].replace(',', '.'));
+                        
+                        // Exclusion intelligente des conditions de test récurrentes
+                        if ((key === 'rdson' && val > 100) || val === 20 || val === 30) {
+                            if (numbers.length > 1) continue; 
+                        }
+                        selectedValue = val;
+                        break;
+                    }
+                    if (selectedValue !== null) extracted[key] = selectedValue;
+                }
+            }
+        });
+    });
+
+    return extracted;
+}
 
 async function runExtractionForTarget(target, btnElement) {
     if (currentSelectedFile === null) return;
-    if (GROQ_API_KEY === "" || GROQ_API_KEY.includes("METTRE")) {
-        alert("Configure ta clé API Groq dans le code !");
-        return;
-    }
 
     const originalText = btnElement.textContent;
-    btnElement.textContent = "Extraction...";
+    btnElement.textContent = "Scanning...";
     btnElement.disabled = true;
     
     try {
         const fileItem = library[currentSelectedFile];
-        
         const cleanedName = fileItem.name.replace(/\.[^/.]+$/, ""); 
         if (target === 'A') nameMOSFET_A = cleanedName;
         if (target === 'B') nameMOSFET_B = cleanedName;
         updateNamesInUI(); 
         
-        const rawText = await extractTextFromPDF(fileItem.file);
-        
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: { 
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${GROQ_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: "llama-3.3-70b-versatile",
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: "Datasheet : " + rawText }
-                ],
-                response_format: { type: "json_object" },
-                temperature: 0.1
-            })
-        });
-
-        const data = await response.json();
-        if (data.error) throw new Error(data.error.message);
-
-        const extractedData = JSON.parse(data.choices[0].message.content);
+        const rawStructuredText = await extractTextFromPDF(fileItem.file);
+        const extractedData = localRegexExtractor(rawStructuredText);
         
         Object.keys(extractedData).forEach(key => {
             const inputEl = document.getElementById(`input-${target}-${key}`);
-            if (inputEl && extractedData[key] !== null) {
-                inputEl.value = extractedData[key];
-                inputEl.style.backgroundColor = target === 'A' ? "#dbeafe" : "#fee2e2"; 
-                setTimeout(() => inputEl.style.backgroundColor = "transparent", 2000);
+            if (inputEl) {
+                if (extractedData[key] !== null) {
+                    inputEl.value = extractedData[key];
+                    inputEl.style.backgroundColor = target === 'A' ? "#dbeafe" : "#fee2e2"; 
+                    setTimeout(() => inputEl.style.backgroundColor = "transparent", 2000);
+                } else {
+                    inputEl.placeholder = "Non trouvé";
+                }
             }
         });
-        btnElement.textContent = "Réussi !";
+        btnElement.textContent = "Terminé !";
     } catch (error) {
         console.error(error);
-        alert("Erreur: " + error.message);
+        alert("Erreur lors du scan : " + error.message);
         btnElement.textContent = "Erreur !";
     } finally {
         setTimeout(() => {
             btnElement.textContent = originalText;
             btnElement.disabled = false;
-        }, 2000);
+        }, 1500);
     }
 }
 
 document.getElementById("btn-extract-A").addEventListener("click", function() { runExtractionForTarget('A', this); });
 document.getElementById("btn-extract-B").addEventListener("click", function() { runExtractionForTarget('B', this); });
-
-// Initialisation
-window.onload = () => {
-    initTable();
-    initDB();
-};
-
-// --- SYSTÈME DE NAVIGATION PAR ONGLETS ---
-document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active-content'));
-        this.classList.add('active');
-        document.getElementById(this.getAttribute('data-tab')).classList.add('active-content');
-    });
-});
 
 // --- MOTEUR DE CALCUL INTERCEPTANT L'ID TRANSISTOR ---
 function executeLossEngine(target, overrideId = null, overrideValue = null) {
@@ -302,7 +342,6 @@ function executeLossEngine(target, overrideId = null, overrideValue = null) {
         return parseFloat(document.getElementById(finalId)?.value) || 0;
     };
 
-    // 1. Données Composant (Tableau 1)
     const rdson = getVal("input-rdson") * 1e-3; 
     const qg = getVal("input-qg") * 1e-9;
     const qgs = getVal("input-qgs") * 1e-9;
@@ -311,7 +350,6 @@ function executeLossEngine(target, overrideId = null, overrideValue = null) {
     const vsd = getVal("input-vsd");
     const qrr = getVal("input-qrr") * 1e-9;
 
-    // 2. Données Système & Driver (Tableau 2)
     const fsw = getVal("sys-fsw") * 1e3; 
     const vbus = getVal("sys-vbus");
     const irms = getVal("sys-irms");
@@ -325,7 +363,6 @@ function executeLossEngine(target, overrideId = null, overrideValue = null) {
     const tdton = getVal("sys-tdton") * 1e-9;
     const tdtoff = getVal("sys-tdtoff") * 1e-9;
 
-    // 3. Calculs intermédiaires
     const i_gate_on = (vdriver - vplateau) / rgate;
     const i_gate_off = (vplateau - vlow) / rgate;
 
@@ -335,7 +372,6 @@ function executeLossEngine(target, overrideId = null, overrideValue = null) {
 
     const i_sw = irms * Math.SQRT2; 
     
-    // 4. Calcul de toutes les pertes directes
     const p_sw = 0.5 * vbus * i_sw * (t_on + t_off) * fsw;
     const p_cond = rdson * Math.pow(irms, 2) * d;
     const p_gate = qg * vdriver * fsw;
@@ -348,7 +384,7 @@ function executeLossEngine(target, overrideId = null, overrideValue = null) {
     return { t_on, t_off, p_sw, p_cond, p_gate, p_rr, p_oss, p_dt, p_total };
 }
 
-// --- AFFICHAGE COMPARATIF (PAGE 1) + CONSTRUTION HISTOGRAMME ---
+// --- AFFICHAGE COMPARATIF (PAGE 1) + CONFIGURATION HISTOGRAMME ---
 document.getElementById("btn-calculate").addEventListener("click", function() {
     const resA = executeLossEngine('A');
     const resB = executeLossEngine('B');
@@ -407,7 +443,6 @@ document.getElementById("btn-calculate").addEventListener("click", function() {
     document.getElementById("results-output").style.display = "block";
     if (window.MathJax) MathJax.typesetPromise();
 
-    // --- NOUVEAU : RENDU DE L'HISTOGRAMME EMPILÉ DE LA PREMIÈRE PAGE ---
     const ctxDash = document.getElementById('chart-dashboard-losses').getContext('2d');
     if (dashboardChartInstance) dashboardChartInstance.destroy();
 
@@ -433,11 +468,7 @@ document.getElementById("btn-calculate").addEventListener("click", function() {
             },
             scales: {
                 x: { stacked: true },
-                y: { 
-                    stacked: true, 
-                    title: { display: true, text: 'Puissance dissipée totale (W)' }, 
-                    beginAtZero: true 
-                }
+                y: { stacked: true, title: { display: true, text: 'Puissance dissipée totale (W)' }, beginAtZero: true }
             }
         }
     });
