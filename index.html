@@ -22,6 +22,7 @@
             <nav class="nav-tabs">
                 <button class="tab-btn active" data-tab="tab-dashboard">📊 Calculateur Principal</button>
                 <button class="tab-btn" data-tab="tab-analysis">📈 Analyse Paramétrique</button>
+                <button class="tab-btn" data-tab="tab-profiler">⏱️ Profileur de Mission</button>
             </nav>
         </div>
     </header>
@@ -49,6 +50,14 @@
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <div class="modulation-zone" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <h2 style="font-size: 1.1rem; margin-bottom: 0.5rem;">🎛️ Type de Modulation</h2>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button id="btn-mod-foc" class="mod-btn active" style="flex: 1; padding: 0.6rem; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; background: #e2e8f0; color: var(--text-main);">FOC</button>
+                        <button id="btn-mod-trapeze" class="mod-btn" style="flex: 1; padding: 0.6rem; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; background: var(--secondary); color: white;">Trapèze</button>
+                    </div>
                 </div>
             </aside>
 
@@ -92,6 +101,13 @@
                                     </tr>
                                 </thead>
                                 <tbody>
+                                    <tr id="row-tblock" style="display: none; background: #fffbeb;">
+                                        <td><strong>t_block</strong></td>
+                                        <td>Durée d'un bloc de conduction</td>
+                                        <td><input type="number" id="sys-A-tblock" value="2.0" step="0.1"></td>
+                                        <td><input type="number" id="sys-B-tblock" value="2.0" step="0.1"></td>
+                                        <td>ms</td>
+                                    </tr>
                                     <tr>
                                         <td><strong>f_sw</strong></td>
                                         <td>Fréquence de découpage</td>
@@ -176,7 +192,7 @@
 
                     <div class="results-column">
                         <div class="calculation-zone">
-                            <h2>🧮 3. Résultats & Pertes</h2>
+                            <h2>🧮 3. Résultats de Pertes</h2>
                             <button id="btn-calculate" class="btn btn-primary">Calculer les pertes</button>
                             <div id="results-output" class="results" style="display: none;">
                                 <table class="library-table">
@@ -209,12 +225,9 @@
         <div class="container">
             <main class="main-content">
                 <div class="dashboard-layout">
-
                     <div class="inputs-column">
                         <h2>📈 Configuration du Balayage (Sweep)</h2>
-                        <div class="table-container"
-                            style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; max-height: none;">
-
+                        <div class="table-container" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; max-height: none;">
                             <div class="control-group">
                                 <label for="sweep-param"><strong>Paramètre cible :</strong></label>
                                 <select id="sweep-param" class="custom-select">
@@ -225,37 +238,78 @@
                                     <option value="sys-rgate">Résistance de Grille (R_gate)</option>
                                 </select>
                             </div>
-
                             <div class="control-group">
                                 <label for="sweep-min"><strong>Valeur Min :</strong></label>
                                 <input type="number" id="sweep-min" value="10">
                             </div>
-
                             <div class="control-group">
                                 <label for="sweep-max"><strong>Valeur Max :</strong></label>
                                 <input type="number" id="sweep-max" value="100">
                             </div>
-
                             <div class="control-group">
                                 <label for="sweep-steps"><strong>Nombre de points :</strong></label>
                                 <input type="number" id="sweep-steps" value="20" min="5" max="100">
                             </div>
-
-                            <button id="btn-run-sweep" class="btn btn-primary" style="margin-top: 1rem;">Tracer la
-                                courbe des pertes</button>
+                            <button id="btn-run-sweep" class="btn btn-primary" style="margin-top: 1rem;">Tracer la courbe des pertes</button>
                         </div>
                     </div>
-
                     <div class="results-column" style="flex: 2;">
                         <div class="calculation-zone">
                             <h2>📊 Courbes d'évolution des pertes</h2>
-                            <div class="chart-wrapper"
-                                style="position: relative; height:450px; width:100%; margin-top: 1rem;">
+                            <div class="chart-wrapper" style="position: relative; height:450px; width:100%; margin-top: 1rem;">
                                 <canvas id="chart-losses"></canvas>
                             </div>
                         </div>
                     </div>
+                </div>
+            </main>
+        </div>
+    </div>
 
+    <div id="tab-profiler" class="tab-content">
+        <div class="container">
+            <main class="main-content">
+                <div class="dashboard-layout">
+                    <div class="inputs-column">
+                        <h2>⏱️ Profil d'Utilisation Moteur (6-Steps)</h2>
+                        <div class="table-container" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; max-height: none;">
+                            <div class="control-group">
+                                <label for="prof-poles"><strong>Nombre de pôles moteur :</strong></label>
+                                <input type="number" id="prof-poles" value="10" min="2" step="2">
+                            </div>
+                            <div class="control-group">
+                                <label for="prof-rpm-min"><strong>RPM Minimum :</strong></label>
+                                <input type="number" id="prof-rpm-min" value="1000">
+                            </div>
+                            <div class="control-group">
+                                <label for="prof-rpm-max"><strong>RPM Maximum :</strong></label>
+                                <input type="number" id="prof-rpm-max" value="12000">
+                            </div>
+                            <button id="btn-run-profile" class="btn btn-primary" style="margin-top: 1rem;">Simuler le Profil Énergétique</button>
+                        </div>
+                    </div>
+                    <div class="results-column" style="flex: 2;">
+                        <div class="calculation-zone">
+                            <h2>📊 Bilan de Mission Intégré (mJ et Watts)</h2>
+                            <div id="profile-output" class="results" style="display: none; background: white;">
+                                <table class="library-table" style="font-size: 0.85rem;">
+                                    <thead>
+                                        <tr>
+                                            <th>Type de Perte</th>
+                                            <th class="name-A" style="color: #3b82f6;">MOSFET A (mJ)</th>
+                                            <th class="name-A" style="color: #3b82f6;">MOSFET A (W Moyen)</th>
+                                            <th class="name-B" style="color: #ef4444;">MOSFET B (mJ)</th>
+                                            <th class="name-B" style="color: #ef4444;">MOSFET B (W Moyen)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="profile-results-body"></tbody>
+                                </table>
+                                <div class="chart-wrapper" style="position: relative; height:320px; width:100%; margin-top: 1.5rem;">
+                                    <canvas id="chart-profile-timeline"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </main>
         </div>
